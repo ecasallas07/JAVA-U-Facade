@@ -1,6 +1,10 @@
 package com.logiservices.service;
 
 import com.logiservices.dto.EnvioDto;
+import com.logiservices.client.TmsServiceClient;
+import com.logiservices.client.AcmsServiceClient;
+import com.logiservices.client.SmcsServiceClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -9,17 +13,26 @@ import java.util.stream.Collectors;
 /**
  * Service Layer para manejo de envíos
  *
- * En esta implementación inicial, simulamos datos que en el futuro
- * vendrán de los servicios TMS, ACMS y SMCS registrados en Eureka.
+ * Esta implementación integra con los servicios TMS, ACMS y SMCS
+ * registrados en Eureka Server usando Feign Clients.
  *
  * @Service: Marca la clase como servicio de Spring Boot
  */
 @Service
 public class EnvioService {
 
+    @Autowired
+    private TmsServiceClient tmsServiceClient;
+
+    @Autowired
+    private AcmsServiceClient acmsServiceClient;
+
+    @Autowired
+    private SmcsServiceClient smcsServiceClient;
+
     /**
-     * Map que simula los datos de envíos en memoria
-     * En futuras entregas, estos datos vendrán de servicios reales
+     * Map que mantiene datos de envíos en memoria para operaciones CRUD
+     * En producción, esto sería reemplazado por una base de datos
      */
     private final Map<Long, EnvioDto> enviosMock = new HashMap<>();
 
@@ -233,5 +246,180 @@ public class EnvioService {
         stats.put("porEstado", porEstado);
 
         return stats;
+    }
+
+    /**
+     * INTEGRACIÓN CON SERVICIOS REALES VIA EUREKA
+     * ===========================================
+     */
+
+    /**
+     * Consulta un envío en el sistema correspondiente (TMS, ACMS, SMCS)
+     *
+     * @param id ID del envío
+     * @return Información del envío desde el sistema correspondiente
+     */
+    public Map<String, Object> consultarEnvioEnSistema(Long id) {
+        try {
+            // Intentar consultar en TMS
+            Map<String, Object> resultado = tmsServiceClient.consultarEnvio(id);
+            if (resultado != null && !resultado.containsKey("error")) {
+                return resultado;
+            }
+        } catch (Exception e) {
+            // TMS no disponible o envío no encontrado, continuar con ACMS
+        }
+
+        try {
+            // Intentar consultar en ACMS
+            Map<String, Object> resultado = acmsServiceClient.consultarEnvio(id);
+            if (resultado != null && !resultado.containsKey("error")) {
+                return resultado;
+            }
+        } catch (Exception e) {
+            // ACMS no disponible o envío no encontrado, continuar con SMCS
+        }
+
+        try {
+            // Intentar consultar en SMCS
+            Map<String, Object> resultado = smcsServiceClient.consultarEnvio(id);
+            if (resultado != null && !resultado.containsKey("error")) {
+                return resultado;
+            }
+        } catch (Exception e) {
+            // SMCS no disponible o envío no encontrado
+        }
+
+        // Si no se encuentra en ningún sistema
+        return Map.of("error", "Envío no encontrado en ningún sistema", "id", id);
+    }
+
+    /**
+     * Lista todos los envíos de todos los sistemas
+     *
+     * @return Lista consolidada de envíos de todos los sistemas
+     */
+    public Map<String, Object> listarTodosLosEnvios() {
+        List<Map<String, Object>> todosLosEnvios = new ArrayList<>();
+
+        try {
+            // Obtener envíos de TMS
+            Map<String, Object> enviosTms = tmsServiceClient.listarEnvios();
+            if (enviosTms != null && enviosTms.containsKey("envios")) {
+                List<Map<String, Object>> envios = (List<Map<String, Object>>) enviosTms.get("envios");
+                todosLosEnvios.addAll(envios);
+            }
+        } catch (Exception e) {
+            // TMS no disponible
+        }
+
+        try {
+            // Obtener envíos de ACMS
+            Map<String, Object> enviosAcms = acmsServiceClient.listarEnvios();
+            if (enviosAcms != null && enviosAcms.containsKey("envios")) {
+                List<Map<String, Object>> envios = (List<Map<String, Object>>) enviosAcms.get("envios");
+                todosLosEnvios.addAll(envios);
+            }
+        } catch (Exception e) {
+            // ACMS no disponible
+        }
+
+        try {
+            // Obtener envíos de SMCS
+            Map<String, Object> enviosSmcs = smcsServiceClient.listarEnvios();
+            if (enviosSmcs != null && enviosSmcs.containsKey("envios")) {
+                List<Map<String, Object>> envios = (List<Map<String, Object>>) enviosSmcs.get("envios");
+                todosLosEnvios.addAll(envios);
+            }
+        } catch (Exception e) {
+            // SMCS no disponible
+        }
+
+        return Map.of(
+            "total", todosLosEnvios.size(),
+            "envios", todosLosEnvios,
+            "sistemas", Arrays.asList("TMS", "ACMS", "SMCS")
+        );
+    }
+
+    /**
+     * Actualiza el estado de un envío en el sistema correspondiente
+     *
+     * @param id ID del envío
+     * @param estado Nuevo estado
+     * @return Resultado de la actualización
+     */
+    public Map<String, Object> actualizarEstadoEnSistema(Long id, String estado) {
+        Map<String, String> request = Map.of("estado", estado);
+
+        try {
+            // Intentar actualizar en TMS
+            Map<String, Object> resultado = tmsServiceClient.actualizarEstado(id, request);
+            if (resultado != null && !resultado.containsKey("error")) {
+                return resultado;
+            }
+        } catch (Exception e) {
+            // TMS no disponible o envío no encontrado, continuar con ACMS
+        }
+
+        try {
+            // Intentar actualizar en ACMS
+            Map<String, Object> resultado = acmsServiceClient.actualizarEstado(id, request);
+            if (resultado != null && !resultado.containsKey("error")) {
+                return resultado;
+            }
+        } catch (Exception e) {
+            // ACMS no disponible o envío no encontrado, continuar con SMCS
+        }
+
+        try {
+            // Intentar actualizar en SMCS
+            Map<String, Object> resultado = smcsServiceClient.actualizarEstado(id, request);
+            if (resultado != null && !resultado.containsKey("error")) {
+                return resultado;
+            }
+        } catch (Exception e) {
+            // SMCS no disponible o envío no encontrado
+        }
+
+        return Map.of("error", "Envío no encontrado en ningún sistema para actualizar", "id", id);
+    }
+
+    /**
+     * Obtiene información de todos los sistemas registrados
+     *
+     * @return Información consolidada de todos los sistemas
+     */
+    public Map<String, Object> obtenerInfoSistemas() {
+        Map<String, Object> infoSistemas = new HashMap<>();
+
+        try {
+            Map<String, Object> infoTms = tmsServiceClient.obtenerInfo();
+            infoSistemas.put("TMS", infoTms);
+        } catch (Exception e) {
+            infoSistemas.put("TMS", Map.of("error", "Servicio no disponible"));
+        }
+
+        try {
+            Map<String, Object> infoAcms = acmsServiceClient.obtenerInfo();
+            infoSistemas.put("ACMS", infoAcms);
+        } catch (Exception e) {
+            infoSistemas.put("ACMS", Map.of("error", "Servicio no disponible"));
+        }
+
+        try {
+            Map<String, Object> infoSmcs = smcsServiceClient.obtenerInfo();
+            infoSistemas.put("SMCS", infoSmcs);
+        } catch (Exception e) {
+            infoSistemas.put("SMCS", Map.of("error", "Servicio no disponible"));
+        }
+
+        return Map.of(
+            "serviceFacade", "LogiServices Service Facade",
+            "version", "1.0.0",
+            "descripcion", "Integración unificada de sistemas TMS, ACMS y SMCS",
+            "sistemas", infoSistemas,
+            "eurekaServer", "http://localhost:8761"
+        );
     }
 }

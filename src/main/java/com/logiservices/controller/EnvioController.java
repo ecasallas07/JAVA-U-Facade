@@ -2,10 +2,21 @@ package com.logiservices.controller;
 
 import com.logiservices.dto.EnvioDto;
 import com.logiservices.service.EnvioService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -20,6 +31,8 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/v1/envios")
+@Tag(name = "Envíos", description = "Gestión de envíos y consultas del Service Facade")
+@SecurityRequirement(name = "bearerAuth")
 public class EnvioController {
 
     private final EnvioService envioService;
@@ -44,22 +57,43 @@ public class EnvioController {
      * @return ResponseEntity con la información del envío o error
      */
     @GetMapping("/{id}")
-    public ResponseEntity<?> getEnvioById(@PathVariable("id") String id) {
+    @Operation(summary = "Obtener envío por ID",
+               description = "Consulta un envío por su ID en todos los sistemas (TMS, ACMS, SMCS)")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Envío encontrado",
+                    content = @Content(schema = @Schema(implementation = EnvioDto.class))),
+        @ApiResponse(responseCode = "404", description = "Envío no encontrado",
+                    content = @Content(schema = @Schema(implementation = Map.class))),
+        @ApiResponse(responseCode = "400", description = "ID inválido",
+                    content = @Content(schema = @Schema(implementation = Map.class))),
+        @ApiResponse(responseCode = "401", description = "No autenticado",
+                    content = @Content(schema = @Schema(implementation = Map.class))),
+        @ApiResponse(responseCode = "403", description = "Sin permisos",
+                    content = @Content(schema = @Schema(implementation = Map.class)))
+    })
+    @PreAuthorize("hasAnyRole('ADMIN', 'OPERADOR', 'CONSULTOR', 'CLIENTE')")
+    public ResponseEntity<?> getEnvioById(
+            @Parameter(description = "ID del envío", example = "123", required = true)
+            @PathVariable("id") String id) {
         try {
             // Convertir el ID de String a Long
             Long envioId = Long.parseLong(id);
 
-            // Buscar el envío en el servicio
-            EnvioDto envio = envioService.getEnvioById(envioId);
-
-            // Si no se encuentra el envío, devolver 404
-            if (envio == null) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body("No se encontró información del envío con ID " + envioId);
+            // PRIMERO: Intentar buscar en sistemas integrados (TMS, ACMS, SMCS)
+            Map<String, Object> envioSistema = envioService.consultarEnvioEnSistema(envioId);
+            if (envioSistema != null && !envioSistema.containsKey("error")) {
+                return ResponseEntity.ok(envioSistema);
             }
 
-            // Si se encuentra, devolver 200 OK con los datos
-            return ResponseEntity.ok(envio);
+            // SEGUNDO: Si no se encuentra en sistemas, buscar en datos locales
+            EnvioDto envio = envioService.getEnvioById(envioId);
+            if (envio != null) {
+                return ResponseEntity.ok(envio);
+            }
+
+            // Si no se encuentra en ningún lado, devolver 404
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body("No se encontró información del envío con ID " + envioId);
 
         } catch (NumberFormatException e) {
             // Si el ID no es numérico, devolver 400 Bad Request
@@ -313,6 +347,71 @@ public class EnvioController {
     }
 
     /**
+     * INTEGRACIÓN CON SERVICIOS VIA EUREKA
+     * ====================================
+     */
+
+    /**
+     * GET /api/v1/envios/sistemas - Listar envíos de todos los sistemas
+     */
+    @GetMapping("/sistemas")
+    public ResponseEntity<?> listarEnviosDeSistemas() {
+        try {
+            Map<String, Object> envios = envioService.listarTodosLosEnvios();
+            return ResponseEntity.ok(envios);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Error al consultar sistemas: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * PUT /api/v1/envios/{id}/estado/sistema - Actualizar estado en sistema
+     */
+    @PutMapping("/{id}/estado/sistema")
+    public ResponseEntity<?> actualizarEstadoEnSistema(@PathVariable("id") String id,
+                                                      @RequestBody Map<String, String> request) {
+        try {
+            Long envioId = Long.parseLong(id);
+            String estado = request.get("estado");
+
+            if (estado == null || estado.trim().isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "El estado es obligatorio"));
+            }
+
+            Map<String, Object> resultado = envioService.actualizarEstadoEnSistema(envioId, estado);
+
+            if (resultado.containsKey("error")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(resultado);
+            }
+
+            return ResponseEntity.ok(resultado);
+
+        } catch (NumberFormatException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", "El ID del envío debe ser numérico"));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Error interno del servidor: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * GET /api/v1/envios/sistemas/info - Información de todos los sistemas
+     */
+    @GetMapping("/sistemas/info")
+    public ResponseEntity<?> obtenerInfoSistemas() {
+        try {
+            Map<String, Object> info = envioService.obtenerInfoSistemas();
+            return ResponseEntity.ok(info);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Error al obtener información de sistemas: " + e.getMessage()));
+        }
+    }
+
+    /**
      * Endpoint adicional para obtener información del servicio (útil para testing)
      * GET /api/v1/envios/info
      */
@@ -321,15 +420,24 @@ public class EnvioController {
         return ResponseEntity.ok(Map.of(
             "servicio", "LogiServices Service Facade",
             "version", "1.0.0",
-            "endpoints", Map.of(
-                "GET /api/v1/envios", "Listar todos los envíos",
-                "GET /api/v1/envios/{id}", "Obtener envío por ID",
-                "POST /api/v1/envios", "Crear nuevo envío",
-                "PUT /api/v1/envios/{id}", "Actualizar envío",
-                "DELETE /api/v1/envios/{id}", "Eliminar envío",
-                "GET /api/v1/envios/sistema/{sistema}", "Buscar por sistema",
-                "GET /api/v1/envios/estado/{estado}", "Buscar por estado",
-                "GET /api/v1/envios/estadisticas", "Obtener estadísticas"
+            "descripcion", "Service Facade que integra TMS, ACMS y SMCS via Eureka",
+            "endpoints", new HashMap<String, String>() {{
+                put("GET /api/v1/envios", "Listar todos los envíos locales");
+                put("GET /api/v1/envios/{id}", "Obtener envío por ID (sistemas + locales)");
+                put("GET /api/v1/envios/sistemas", "Listar envíos de todos los sistemas");
+                put("POST /api/v1/envios", "Crear nuevo envío local");
+                put("PUT /api/v1/envios/{id}", "Actualizar envío local");
+                put("PUT /api/v1/envios/{id}/estado/sistema", "Actualizar estado en sistema");
+                put("DELETE /api/v1/envios/{id}", "Eliminar envío local");
+                put("GET /api/v1/envios/sistema/{sistema}", "Buscar por sistema local");
+                put("GET /api/v1/envios/estado/{estado}", "Buscar por estado local");
+                put("GET /api/v1/envios/estadisticas", "Obtener estadísticas locales");
+                put("GET /api/v1/envios/sistemas/info", "Información de todos los sistemas");
+            }},
+            "integracion", Map.of(
+                "eurekaServer", "http://localhost:8761",
+                "serviciosRegistrados", Arrays.asList("TMS", "ACMS", "SMCS"),
+                "tecnologia", "Spring Cloud OpenFeign"
             )
         ));
     }

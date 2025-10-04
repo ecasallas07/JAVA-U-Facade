@@ -2,15 +2,35 @@
 
 ## 🚀 Configuración Inicial
 
-1. **Ejecutar la aplicación:**
+### **Opción 1: Arranque Automático (Recomendado)**
+```bash
+cd /Users/ecasallas/Documents/Java-U/../LogiServices-Mocks
+./start-all-services.sh
+```
+
+### **Opción 2: Arranque Manual**
+1. **Eureka Server:**
    ```bash
-   mvn spring-boot:run
+   cd eureka-server && mvn spring-boot:run
    ```
 
-2. **Verificar que la aplicación esté corriendo:**
-   - URL: http://localhost:8080
-   - Info del servicio: http://localhost:8080/api/v1/envios/info
-   - Deberías ver el mensaje de inicio en la consola
+2. **Servicios Mock (en terminales separadas):**
+   ```bash
+   cd tms-service && mvn spring-boot:run    # Puerto 8081
+   cd acms-service && mvn spring-boot:run   # Puerto 8082
+   cd smcs-service && mvn spring-boot:run   # Puerto 8083
+   ```
+
+3. **Service Facade:**
+   ```bash
+   cd ../Java-U && mvn spring-boot:run      # Puerto 8080
+   ```
+
+### **Verificación del Sistema:**
+- **Eureka Dashboard:** http://localhost:8761
+- **Service Facade:** http://localhost:8080
+- **Info del servicio:** http://localhost:8080/api/v1/envios/info
+- **Sistemas integrados:** http://localhost:8080/api/v1/envios/sistemas/info
 
 ## 📋 Colección de Requests - CRUD Completo
 
@@ -210,6 +230,108 @@ Content-Type: application/json
 ```json
 {
   "error": "No se encontró el envío con ID 999"
+}
+```
+
+---
+
+## 🔗 OPERACIONES DE INTEGRACIÓN CON SISTEMAS
+
+### ✅ 13. LISTAR ENVÍOS DE TODOS LOS SISTEMAS
+**Request:** `GET /api/v1/envios/sistemas`
+
+**URL Completa:** `http://localhost:8080/api/v1/envios/sistemas`
+
+**Respuesta Esperada (200 OK):**
+```json
+{
+  "total": 9,
+  "envios": [
+    {
+      "id": 123,
+      "origen": "Bogotá",
+      "destino": "Medellín",
+      "estado": "En tránsito",
+      "sistemaOrigen": "TMS",
+      "tipoTransporte": "Terrestre",
+      "ruta": {...}
+    },
+    {
+      "id": 456,
+      "origen": "Cali",
+      "destino": "Cartagena",
+      "estado": "Entregado",
+      "sistemaOrigen": "ACMS",
+      "tipoTransporte": "Aéreo",
+      "vuelo": {...}
+    },
+    // ... más envíos de todos los sistemas
+  ],
+  "sistemas": ["TMS", "ACMS", "SMCS"]
+}
+```
+
+---
+
+### ✅ 14. ACTUALIZAR ESTADO EN SISTEMA
+**Request:** `PUT /api/v1/envios/123/estado/sistema`
+
+**URL Completa:** `http://localhost:8080/api/v1/envios/123/estado/sistema`
+
+**Headers:**
+```
+Content-Type: application/json
+```
+
+**Body (JSON):**
+```json
+{
+  "estado": "Entregado"
+}
+```
+
+**Respuesta Esperada (200 OK):**
+```json
+{
+  "mensaje": "Estado actualizado en TMS",
+  "id": 123,
+  "estadoAnterior": "En tránsito",
+  "estadoNuevo": "Entregado",
+  "fechaActualizacion": "2024-01-15T15:30:00"
+}
+```
+
+---
+
+### ✅ 15. INFORMACIÓN DE TODOS LOS SISTEMAS
+**Request:** `GET /api/v1/envios/sistemas/info`
+
+**URL Completa:** `http://localhost:8080/api/v1/envios/sistemas/info`
+
+**Respuesta Esperada (200 OK):**
+```json
+{
+  "serviceFacade": "LogiServices Service Facade",
+  "version": "1.0.0",
+  "descripcion": "Integración unificada de sistemas TMS, ACMS y SMCS",
+  "sistemas": {
+    "TMS": {
+      "servicio": "Transport Management System (TMS)",
+      "version": "1.0.0",
+      "endpoints": {...}
+    },
+    "ACMS": {
+      "servicio": "Air Cargo Management System (ACMS)",
+      "version": "1.0.0",
+      "endpoints": {...}
+    },
+    "SMCS": {
+      "servicio": "Sea Management Cargo System (SMCS)",
+      "version": "1.0.0",
+      "endpoints": {...}
+    }
+  },
+  "eurekaServer": "http://localhost:8761"
 }
 ```
 

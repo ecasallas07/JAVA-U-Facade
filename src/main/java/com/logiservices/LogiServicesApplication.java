@@ -2,6 +2,8 @@ package com.logiservices;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+// import org.springframework.cloud.netflix.eureka.EnableEurekaClient; // Deprecated
+import org.springframework.cloud.openfeign.EnableFeignClients;
 
 /**
  * Clase principal de LogiServices Service Facade
@@ -16,6 +18,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * - @ComponentScan: Escanea el paquete com.logiservices en busca de componentes
  */
 @SpringBootApplication
+// @EnableEurekaClient // Deprecated - Eureka client is auto-configured
+@EnableFeignClients
 public class LogiServicesApplication {
 
     /**
@@ -31,9 +35,13 @@ public class LogiServicesApplication {
         System.out.println("🔍 Ejemplo: http://localhost:8080/api/v1/envios/123");
         System.out.println("📊 Info del servicio: http://localhost:8080/api/v1/envios/info");
         System.out.println("");
-        System.out.println("📦 Sistemas integrados (simulados):");
-        System.out.println("   • TMS - Transport Management System");
-        System.out.println("   • ACMS - Air Cargo Management System");
-        System.out.println("   • SMCS - Sea Management Cargo System");
+        System.out.println("🎯 Registrado en Eureka Server: http://localhost:8761");
+        System.out.println("");
+        System.out.println("📦 Sistemas integrados (via Eureka):");
+        System.out.println("   • TMS Service - http://localhost:8081");
+        System.out.println("   • ACMS Service - http://localhost:8082");
+        System.out.println("   • SMCS Service - http://localhost:8083");
+        System.out.println("");
+        System.out.println("🔗 Para ver servicios registrados: http://localhost:8761");
     }
 }
